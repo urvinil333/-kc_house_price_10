@@ -1,0 +1,278 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+project=read.csv("C:/Users/dell/Downloads/archive/kc_house_data.csv", 
+                stringsAsFactors= FALSE, header = TRUE, sep = ",")
+```
+
+```{r}
+head(project,10)
+```
+
+
+```{r}
+str(project)
+```
+
+```{r}
+summary(project)
+```
+```{r}
+nrow(project)
+ncol(project)
+```
+
+```{r}
+NA_values=data.frame(no_of_na_values=colSums(is.na(project)))
+head(NA_values,21)
+sum(NA_values)
+```
+```{r}
+unique(project$condition)
+```
+
+```{r}
+GradeMean=mean(project$grade, na.rm = TRUE)
+GradeMean#indexing
+data[is.na(projectClean$grade),"grade"]=GradeMean
+#projectClean<-na.omit(project)
+sum(is.na(projectClean))
+#View(project)
+View(projectClean)
+```
+
+#removing the column which do not provide any information about housing
+```{r}
+data1clean$id = NULL
+```
+
+```{r}
+View(data1clean)
+```
+#converting the price from Dollar to units of 1000 Dollar to improve readability.
+```{r}
+data1clean$price = data1clean$price / 1000
+```
+
+#density of the price to get a first impression on its distribution
+```{r}
+install.packages("ggplot2")
+library(ggplot2)
+ggplot(data1clean, aes(x = price)) + geom_density()
+```
+
+```{r}
+range(data1clean$price)
+min(range(data1clean$price))
+max(range(data1clean$price))
+```
+
+#Determining the association between variables.
+```{r}
+install.packages("corrplot")
+library(corrplot)
+cor_data=data.frame(data1clean[,3:19])
+correlation=cor(cor_data)
+
+
+corrplot(correlation,method="color",outline="black", insig = "p-value")
+```
+#According to our corrplot price is positively correlated with bedroom, bathroom, Sqft_living, view , grade, sqft_above, sqft_basement, lat, sqft_living 15.
+#Next we will draw some scatter plots to determine the relationship between these variables.
+```{r}
+install.packages("ggplot2")
+install.packages("gridExtra")
+library(ggplot2)
+library(gridExtra)
+p1=ggplot(data = data1clean, aes(x = bedrooms, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Bedrooms and Price", x="bedrooms",y="Price")
+p2=ggplot(data = data1clean, aes(x = bathrooms, y = price))  +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Bathrooms and Price", x="bathrooms",y="Price")
+p3=ggplot(data = data1clean, aes(x = sqft_living, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_living and Price", x="Sqft_living",y="Price")
+p4=ggplot(data = data1clean, aes(x = sqft_above, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_above and Price", x="Sqft_above",y="Price")
+p5=ggplot(data = data1clean, aes(x = sqft_basement, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_basement and Price", x="Sqft_basement",y="Price")
+p6=ggplot(data = data1clean, aes(x = lat, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Latitude and Price", x="Latitude",y="Price")
+p7=ggplot(data = data1clean, aes(x = sqft_living15, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_living15 and Price", x="Sqft_living15",y="Price")
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,nrow=4)
+```
+
+#from these scatter plots, we conclude that the relationship between price and bedroom, bathroom, Sqft_living,sqft_above, sqft_basement, lat, sqft_living 15 is linear.
+#For the two categorical variables(view and grade) we draw boxplots to understand the relationship.
+```{r}
+#par(mfrow=c(1, 2))
+boxplot(price~view,data=data1clean,main="Different boxplots", xlab="view",ylab="price",col="orange",border="brown")
+boxplot(price~grade,data=data1clean,main="Different boxplots", xlab="grade",ylab="price",col="orange",border="brown")
+```
+
+#now we check for outliers in the dependent variable(price) using a boxplot.
+```{r}
+library(ggplot2)
+ggplot(data=data1clean)+geom_boxplot(aes(x=bedrooms,y=price))
+```
+#we see that we have a significantly large number of outliers.
+#Treating or altering the outlier/extreme values in genuine observations is not a standard operating procedure. However, it is essential to understand their impact on our predictive models.
+#To better understand the implications of outliers better, I am going to compare the fit of a simple linear regression model on the dataset with and without outliers.
+#For this we first extract outliers from the data and then obtain the data without the outliers.
+```{r}
+outliers=boxplot(data1clean$price,plot=FALSE)$out
+outliers_data=data1clean[which(data1clean$price %in% outliers),]
+train_data= data1clean[-which(data1clean$price %in% outliers),]
+```
+
+#we obtain 872 observations as outliers.
+#Now we plot the data with and without outliers.
+
+```{r}
+par(mfrow=c(1, 2))
+plot(data1clean$bedrooms, data1clean$price, main="With Outliers", xlab="bedrooms", ylab="price", pch="*", col="red", cex=2)
+abline(lm(price ~ bedrooms, data=train_data), col="blue", lwd=3, lty=2)
+# Plot of original data without outliers. Note the change of slope.
+plot(train_data$bedrooms, train_data$price, main="Outliers removed", xlab="bedrooms", ylab="price", pch="*", col="red", cex=2)
+abline(lm(price ~bedrooms, data=train_data), col="blue", lwd=3, lty=2)
+```
+#Notice the change in slope of the best fit line after removing the outliers. It is evident that if we remove the outliers to train the model, our predictions would be exagerated (high error) for larger values of price because of the larger slope.
+```{r}
+set.seed(1)
+train_index1=sample(1:nrow(data1clean),0.7*nrow(data1clean))
+train_data=data1clean[train_index1,]
+test_data=data1clean[-train_index1,]
+model=lm(price~bedrooms+bathrooms+sqft_living+view+grade+
+           sqft_above+sqft_basement+sqft_living15,data=train_data)
+summary(model)
+par(mfrow=c(2,2))
+plot(model)
+dim(train_data)
+dim(test_data)
+```
+
+```{r}
+model2=update(model,~.-sqft_basement-sqft_living15)
+summary(model2)
+par(mfrow=c(2,2))
+plot(model)
+plot(model2)
+
+```
+
+```{r}
+predict(model, data1clean,type = "response")
+predicted<-predict(glm_model,test_set,type="response")
+predicted
+predicted_class<-round(predicted)
+predicted_class
+conf_matrix<-table(actual=test_set$class,predicted=predicted_class)
+conf_matrix
+accuracy<-sum(diag(conf_matrix))/sum(conf_matrix)
+accuracy
+```
+
+We can see the relationship between these variables appear to be moderately strong as shown by R-Squared value and the probability.also coclude from the p-value that sqft_living15 is not a significant variable for the prediction of price. Hence we drop it. ####We also try fitting the model including a few other variables which we left out in the EDA and stop at a model which gives us the maximum R-squared value.
+
+#multiple regression
+```{r}
+
+#View(data1clean)
+model2<-lm(price~bedrooms+bathrooms+sqft_living+sqft_lot+floors+waterfront+view+condition+grade,data = data1clean)
+pemax<-coef(model2)[1]+coef(model2)[2]*data1clean$floors+coef(model2)[3]*data1clean$bedrooms
+summary(model2)
+```
+
+```{r}
+x<- seq(min(range(data1clean$price)),max(range(data1clean$price)),0.1)
+x
+y<-predict(model2,data=x,type="response")
+y
+plot(data1clean$bedrooms,data1clean$price)
+#plot(x,y)
+#lines(x,y)
+summary(model)
+```
+#prepare data for modeling
+#splitting the dataset into train and test sets
+
+```{r}
+sample(data1clean,.5*length(data1clean))
+set.seed(1)
+train_index <- sample(1:nrow(data1clean), 0.7*nrow(data1clean))
+train_set<-data1clean[train_index,-1]
+#View(train_set)
+test_set<-data1clean[-train_index,-1]
+colnames(train_set)
+glm_model<-glm(class~.,data=train_set,family="binomial")
+summary(glm_model)
+```
+
+#making decision trees
+```{r}
+#install.packages("party")
+library(party)
+projectClean_ctree1 <- ctree(condition~price,data=projectClean)
+plot(projectClean_ctree1, type="simple")
+
+#using decision trees for training and test set
+train_index1=sample(1:nrow(projectClean),0.7*nrow(projectClean))
+train_set1=projectClean[train_index1,]
+test_set1=projectClean[-train_index1,]
+
+#run model on training set
+projectClean_ctree_model1 <- ctree(condition~price,data=train_set1)
+projectClean_ctree_model1
+
+#prediction on test set
+projectClean_ctree_prediction1 <- predict(projectClean_ctree_model1,test_set1)
+head(projectClean_ctree_prediction1)
+
+#confusion matrix
+table(projectClean_ctree_prediction1,test_set1$condition)
+
+```
+
+
+```{r}
+installed.packages("class")
+installed.packages("gmodels")
+library("class")
+library("gmodels")
+train_index1=sample(1:nrow(new_housing),0.7*nrow(new_housing)) #randomly picking up 70% observations
+train_set1=new_housing[train_index1,]#dividing the data set into test and training set
+test_set1=new_housing[-train_index1,]
+sum(is.na(test_set1))
+indep_train_set1=train_set1[-20]# making a independent set by removing target variable
+indep_test_set1=test_set1[-20]
+indep_test_set1
+target_train_set1=train_set1$sqft_living
+target_test_set1=test_set1$sqft_living
+sum(is.na(target_test_set1))
+
+
+# applying KNN
+pred_target_test_set1=knn(indep_train_set1,indep_test_set1,target_train_set1,k=3) 
+table(pred_target_test_set1,target_test_set1)
+
+```
+#applying kmean
+
+```{r}
+head(data1clean)
+new_housing=data1clean[-1]
+kmean_housing=kmeans(new_housing,3)
+kmean_housing
+table(new_housing$condition,kmean_housing$cluster)
+
+```
+
+
