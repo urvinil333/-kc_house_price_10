@@ -1,0 +1,613 @@
+---
+title: "Capstone Project"
+output: html_notebook
+---
+# installing libraries and packages
+```{r}
+install.packages("ggplot2")
+install.packages("corrplot")
+install.packages("gridExtra")
+install.packages("party")
+installed.packages("class")
+installed.packages("gmodels")
+library(gridExtra)
+library(corrplot)
+library(class)
+library(gmodels)
+library(party)
+library(ggplot2)
+library(lubridate)
+library(tidyverse)
+library(caTools)
+library(GGally)
+```
+
+
+```{r}
+project=read.csv("C:/Users/dell/Downloads/archive/kc_house_data.csv", 
+                stringsAsFactors= FALSE, header = TRUE, sep = ",")
+```
+
+```{r}
+View(project)
+head(project,10)
+```
+
+
+```{r}
+str(project)
+```
+
+```{r}
+summary(project)
+```
+# Data Cleaning
+```{r}
+project$date = as.Date(project$date)
+str(project)
+
+```
+
+```{r}
+dim(project)
+```
+
+```{r}
+NA_values=data.frame(no_of_na_values=colSums(is.na(project)))
+head(NA_values,21)
+```
+```{r}
+sum(NA_values)
+```
+
+```{r}
+which(is.na(project))
+```
+
+```{r}
+gradeMean=mean(project$grade, na.rm = TRUE)  #indexing
+project[is.na(project$grade),"grade"]=gradeMean
+project$grade = as.integer(project$grade)
+View(project$grade)
+```
+
+```{r}
+sum(is.na(project))
+```
+
+#removing the column which do not provide any information about housing
+```{r}
+project$id = NULL
+View(project)
+```
+
+#converting the price from Dollar to units of 1000 Dollar to improve readability.
+```{r}
+project$price = project$price / 1000
+```
+
+#density of the price to get a first impression on its distribution
+```{r}
+ggplot(project, aes(x = price)) + geom_density()
+```
+
+```{r}
+range(project$price)
+#min(range(project$price))
+#max(range(project$price))
+```
+
+# Dividing data into test and train set
+```{r}
+set.seed(1)
+sample <- sample(c(TRUE, FALSE), nrow(project), replace=TRUE, prob=c(0.7,0.3))
+#  set seed to ensure you always have same random numbers generated
+#sample = sample.split(project,SplitRatio = 0.8) # splits the data in the ratio mentioned in SplitRatio. After splitting marks these rows as logical TRUE and the the remaining are marked as logical FALSE
+#train_data =subset(project,sample ==TRUE) # creates a training dataset named train1 with rows which are marked as TRUE
+#test_data=subset(project, sample==FALSE)
+train_data<- project[sample, ]
+test_data<- project[!sample, ]
+dim(train_data)
+dim(test_data)
+```
+
+#Determining the association between variables.
+```{r}
+cor_data=data.frame(train_data[,3:20])
+correlation=cor(cor_data)
+corrplot(correlation,method="color",outline="black", insig = "p-value")
+```
+#According to our corrplot price is positively correlated with bedroom, bathroom, Sqft_living, view , grade, sqft_above, sqft_basement, lat, sqft_living 15.
+#Next we will draw some scatter plots to determine the relationship between these variables.
+```{r}
+
+p1=ggplot(data = train_data, aes(x = bedrooms, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Bedrooms and Price", x="bedrooms",y="Price")
+p2=ggplot(data = train_data, aes(x = bathrooms, y = price))  +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Bathrooms and Price", x="bathrooms",y="Price")
+p3=ggplot(data = train_data, aes(x = sqft_living, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_living and Price", x="Sqft_living",y="Price")
+p4=ggplot(data = train_data, aes(x = sqft_above, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_above and Price", x="Sqft_above",y="Price")
+p5=ggplot(data = train_data, aes(x = sqft_basement, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Sqft_basement and Price", x="Sqft_basement",y="Price")
+p6=ggplot(data = train_data, aes(x = lat, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Latitude and Price", x="Latitude",y="Price")
+p7=ggplot(data = train_data, aes(x = sqft_lot15, y = price)) +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of sqft_lot15 and Price", x="sqft_lot15",y="Price")
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,nrow=4)
+```
+
+#from these scatter plots, we conclude that the relationship between price and bedroom, bathroom, Sqft_living,sqft_above, sqft_basement, lat, sqft_living 15 is linear.
+#For the two categorical variables(view and grade) we draw boxplots to understand the relationship.
+```{r}
+par(mfrow=c(1, 2))
+boxplot(price~view,data=train_data,main="Price vs View boxplot", xlab="view",ylab="price",col="orange",border="brown")
+boxplot(price~grade,data=train_data,main="Grade vs Price boxplots", xlab="grade",ylab="price",col="orange",border="brown")
+```
+
+#now we check for outliers in the dependent variable(price) using a boxplot.
+```{r}
+ggplot(data=train_data)+geom_boxplot(aes(x=bedrooms,y=price, outline = FALSE))
+```
+#we see that we have a significantly large number of outliers.
+#Treating or altering the outlier/extreme values in genuine observations is not a standard operating procedure. However, it is essential to understand their impact on our predictive models.
+#To better understand the implications of outliers better, I am going to compare the fit of a simple linear regression model on the dataset with and without outliers.
+#For this we first extract outliers from the data and then obtain the data without the outliers.
+
+
+
+
+#adding two new columns for our better understanding.
+###price might have a fair chance of depending on the age of the house and also the number of times it has been renovated.So we try to extact the age and the number of times a particular house has been renovated from our train data.
+```{r}
+train_data$age=train_data$date-train_data$yr_built #age of the house
+train_data$reno=ifelse(train_data$yr_renovated==0,0,1) # number of times renovated
+train_data$reno=as.factor(train_data$reno)
+test_data$age=test_data$date-test_data$yr_built #age of the house
+test_data$reno=ifelse(test_data$yr_renovated==0,0,1) # number of times renovated
+test_data$reno=as.factor(test_data$reno)
+```
+
+```{r}
+#creating a function to remove outliers
+#outliers <- function(x) {
+ #  Q1 <- quantile(x, .25)
+  #Q3 <- quantile(x, .75)
+  #iqr = Q3-Q1
+
+# upper_limit = Q3 + (iqr*1.5)
+ #lower_limit = Q1 - (iqr*1.5)
+
+# x > upper_limit | x < lower_limit
+#}
+
+#remove_outliers <- function(df, cols = names(df)) {
+ # for (i in cols) {
+  #  df <- df[!outliers(df[[]]),]
+#  }
+ # df
+#}
+
+#applying outliers function to dataframe
+#remove_outliers(df, cols)
+```
+
+```{r}
+outliers=boxplot(train_data$price,plot=TRUE)$out
+outliers_data=train_data[which(train_data$price %in% outliers),]
+train_data1= train_data[-which(train_data$price %in% outliers),]
+#summary(train_data1)
+```
+
+```{r}
+par(mfrow=c(1, 4))  # divide graph area in 4 columns 
+colnames(train_data1)
+boxplot(train_data$price, outline = FALSE)
+boxplot(train_data$bedrooms, outline = FALSE)
+boxplot(train_data$bathrooms, outline = FALSE)
+boxplot(train_data$sqft_living, outline = FALSE)
+```
+```{r}
+par(mfrow=c(1, 4))  # divide graph area in 4 columns
+boxplot(train_data$sqft_lot, outline = FALSE)
+boxplot(train_data$floors, outline = FALSE)
+boxplot(train_data$waterfront, outline = FALSE)
+boxplot(train_data$view, outline = FALSE)
+```
+
+```{r}
+par(mfrow=c(1, 4))  # divide graph area in 4 columns
+boxplot(train_data$condition, outline = FALSE)
+boxplot(train_data$grade, outline = FALSE)
+boxplot(train_data$sqft_above, outline = FALSE)
+boxplot(train_data$sqft_basement, outline = FALSE)
+```
+```{r}
+par(mfrow=c(1, 4))  # divide graph area in 4 columns
+boxplot(train_data$yr_built, outline = FALSE)
+boxplot(train_data$yr_renovated, outline = FALSE)
+boxplot(train_data$sqft_living15, outline = FALSE)
+boxplot(train_data$sqft_lot15, outline = FALSE)
+```
+
+```{r}
+price_Q1 <- quantile(train_data$price, .25)
+price_Q1
+price_Q3 <- quantile(train_data$price, .75)
+price_Q3
+price_IQR <- IQR(train_data$price)
+price_IQR
+no_outlier_price <- subset(train_data, train_data$price> (price_Q1 -1.5*price_IQR) & train_data$price < (price_Q3 + 1.5*price_IQR))
+#view row and column count of new data frame
+dim(no_outlier_price)
+```
+
+```{r}
+bedrooms_Q1 <- quantile(train_data$bedrooms, .25)
+bedrooms_Q1
+bedrooms_Q3 <- quantile(train_data$bedrooms, .75)
+bedrooms_Q3
+bedrooms_IQR <- IQR(train_data$bedrooms)
+bedrooms_IQR
+no_outlier_bedrooms <- subset(train_data, train_data$bedrooms> (bedrooms_Q1 -1.5*bedrooms_IQR) & train_data$bedrooms < (bedrooms_Q3 + 1.5*bedrooms_IQR))
+#view row and column count of new data frame
+dim(no_outlier_bedrooms)
+```
+
+```{r}
+
+bathrooms_Q1 <- quantile(train_data$bathrooms, .25)
+bathrooms_Q1
+bathrooms_Q3 <- quantile(train_data$bathrooms, .75)
+bathrooms_Q3
+bathrooms_IQR <- IQR(train_data$bathrooms)
+bathrooms_IQR
+no_outlier_bathrooms <- subset(train_data, train_data$bathrooms> (bathrooms_Q1 -1.5*bathrooms_IQR) & train_data$bathrooms < (bathrooms_Q3 + 1.5*bathrooms_IQR))
+#view row and column count of new data frame
+dim(no_outlier_bathrooms)
+```
+
+```{r}
+
+sqft_living_Q1 <- quantile(train_data$sqft_living, .25)
+sqft_living_Q1
+sqft_living_Q3 <- quantile(train_data$sqft_living, .75)
+sqft_living_Q3
+sqft_living_IQR <- IQR(train_data$sqft_living)
+sqft_living_IQR
+no_outlier_sqft_living <- subset(train_data, train_data$sqft_living> (sqft_living_Q1 -1.5*sqft_living_IQR) & train_data$sqft_living < (sqft_living_Q3 + 1.5*sqft_living_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_living)
+```
+```{r}
+
+sqft_lot_Q1 <- quantile(train_data$sqft_lot, .25)
+sqft_lot_Q1
+sqft_lot_Q3 <- quantile(train_data$sqft_lot, .75)
+sqft_lot_Q3
+sqft_lot_IQR <- IQR(train_data$sqft_lot)
+sqft_lot_IQR
+no_outlier_sqft_lot <- subset(train_data, train_data$sqft_lot> (sqft_lot_Q1 -1.5*sqft_lot_IQR) & train_data$sqft_lot < (sqft_lot_Q3 + 1.5*sqft_lot_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_lot)
+```
+
+```{r}
+floors_Q1 <- quantile(train_data$floors, .25)
+floors_Q1
+floors_Q3 <- quantile(train_data$floors, .75)
+floors_Q3
+floors_IQR <- IQR(train_data$floors)
+floors_IQR
+no_outlier_floors <- subset(train_data, train_data$floors> (floors_Q1 -1.5*floors_IQR) & train_data$floors < (floors_Q3 + 1.5*floors_IQR))
+#view row and column count of new data frame
+dim(no_outlier_floors)
+```
+
+```{r}
+water_front_Q1 <- quantile(train_data$water_front, .25)
+water_front_Q1
+water_front_Q3 <- quantile(train_data$water_front, .75)
+water_front_Q3
+water_front_IQR <- IQR(train_data$water_front)
+water_front_IQR
+no_outlier_water_front <- subset(train_data, train_data$water_front> (water_front_Q1 -1.5*water_front_IQR) & train_data$water_front < (water_front_Q3 + 1.5*water_front_IQR))
+#view row and column count of new data frame
+dim(no_outlier_water_front)
+```
+
+```{r}
+view_Q1 <- quantile(train_data$view, .25)
+view_Q1
+view_Q3 <- quantile(train_data$view, .75)
+view_Q3
+view_IQR <- IQR(train_data$view)
+view_IQR
+no_outlier_view <- subset(train_data, train_data$view> (view_Q1 -1.5*view_IQR) & train_data$view < (view_Q3 + 1.5*view_IQR))
+#view row and column count of new data frame
+dim(no_outlier_view)
+```
+
+```{r}
+condition_Q1 <- quantile(train_data$condition, .25)
+condition_Q1
+condition_Q3 <- quantile(train_data$condition, .75)
+condition_Q3
+condition_IQR <- IQR(train_data$condition)
+condition_IQR
+no_outlier_condition <- subset(train_data, train_data$condition> (condition_Q1 -1.5*condition_IQR) & train_data$condition < (condition_Q3 + 1.5*condition_IQR))
+#view row and column count of new data frame
+dim(no_outlier_condition)
+```
+
+```{r}
+grade_Q1 <- quantile(train_data$grade, .25)
+grade_Q1
+grade_Q3 <- quantile(train_data$grade, .75)
+grade_Q3
+grade_IQR <- IQR(train_data$grade)
+grade_IQR
+no_outlier_grade <- subset(train_data, train_data$grade> (grade_Q1 -1.5*grade_IQR) & train_data$grade < (grade_Q3 + 1.5*grade_IQR))
+#view row and column count of new data frame
+dim(no_outlier_grade)
+```
+
+```{r}
+sqft_above_Q1 <- quantile(train_data$sqft_above, .25)
+sqft_above_Q1
+sqft_above_Q3 <- quantile(train_data$sqft_above, .75)
+sqft_above_Q3
+sqft_above_IQR <- IQR(train_data$sqft_above)
+sqft_above_IQR
+no_outlier_sqft_above <- subset(train_data, train_data$sqft_above> (sqft_above_Q1 -1.5*sqft_above_IQR) & train_data$sqft_above < (sqft_above_Q3 + 1.5*sqft_above_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_above)
+```
+
+```{r}
+sqft_basement_Q1 <- quantile(train_data$sqft_basement, .25)
+sqft_basement_Q1
+sqft_basement_Q3 <- quantile(train_data$sqft_basement, .75)
+sqft_basement_Q3
+sqft_basement_IQR <- IQR(train_data$sqft_basement)
+sqft_basement_IQR
+no_outlier_sqft_basement <- subset(train_data, train_data$sqft_basement> (sqft_basement_Q1 -1.5*sqft_basement_IQR) & train_data$sqft_basement < (sqft_basement_Q3 + 1.5*sqft_basement_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_basement)
+```
+
+```{r}
+yr_built_Q1 <- quantile(train_data$yr_built, .25)
+yr_built_Q1
+yr_built_Q3 <- quantile(train_data$yr_built, .75)
+yr_built_Q3
+yr_built_IQR <- IQR(train_data$yr_built)
+yr_built_IQR
+no_outlier_yr_built <- subset(train_data, train_data$yr_built> (yr_built_Q1 -1.5*yr_built_IQR) & train_data$yr_built < (yr_built_Q3 + 1.5*yr_built_IQR))
+#view row and column count of new data frame
+dim(no_outlier_yr_built)
+```
+
+```{r}
+yr_renovated_Q1 <- quantile(train_data$yr_renovated, .25)
+yr_renovated_Q1
+yr_renovated_Q3 <- quantile(train_data$yr_renovated, .75)
+yr_renovated_Q3
+yr_renovated_IQR <- IQR(train_data$yr_renovated)
+yr_renovated_IQR
+no_outlier_yr_renovated <- subset(train_data, train_data$yr_renovated> (yr_renovated_Q1 -1.5*yr_renovated_IQR) & train_data$yr_renovated < (yr_renovated_Q3 + 1.5*yr_renovated_IQR))
+#view row and column count of new data frame
+dim(no_outlier_yr_renovated)
+```
+
+```{r}
+sqft_living15_Q1 <- quantile(train_data$sqft_living15, .25)
+sqft_living15_Q1
+sqft_living15_Q3 <- quantile(train_data$sqft_living15, .75)
+sqft_living15_Q3
+sqft_living15_IQR <- IQR(train_data$sqft_living15)
+sqft_living15_IQR
+no_outlier_sqft_sqft_living15 <- subset(train_data, train_data$sqft_living15> (sqft_living15_Q1 -1.5*sqft_living15_IQR) & train_data$sqft_sqft_living15 < (sqft_living15_Q3 + 1.5*sqft_living15_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_living15)
+```
+
+```{r}
+sqft_lot15_Q1 <- quantile(train_data$sqft_lot15, .25)
+sqft_lot15_Q1
+sqft_lot15_Q3 <- quantile(train_data$sqft_lot15, .75)
+sqft_lot15_Q3
+sqft_lot15_IQR <- IQR(train_data$sqft_lot15)
+sqft_lot15_IQR
+no_outliers_data<- subset(train_data, train_data$sqft_lot15> (sqft_lot15_Q1 -1.5*sqft_lot15_IQR) & train_data$sqft_lot15 < (sqft_lot15_Q3 + 1.5*sqft_lot15_IQR))
+#view row and column count of new data frame
+dim(no_outlier_sqft_lot15)
+```
+
+```{r}
+#df <- data.frame(no_outlier_price,no_outlier_bedrooms,no_outlier_bathrooms,no_outlier_sqft_living,no_outlier_sqft_lot,no_outlier_floors,no_outlier_water_front,no_outlier_view,no_outlier_condition,no_outlier_grade, no_outlier_sqft_above, no_outlier_sqft_basement, no_outlier_yr_built, no_outlier_yr_renovated, no_outlier_sqft_lot15)
+#df
+```
+
+#Now we plot the data with and without outliers.
+
+```{r}
+par(mfrow=c(1, 2))
+plot(train_data$bedrooms, train_data$price, main="With Outliers", xlab="bedrooms", ylab="price", pch="*", col="red", cex=2)
+abline(lm(price ~ bedrooms, data=train_data), col="blue", lwd=3, lty=2)
+# Plot of original data without outliers. Note the change of slope.
+plot(no_outliers$train_data.bedrooms, no_outliers$train_data.price, main="Outliers removed", xlab="bedrooms", ylab="price", pch="*", col="red", cex=2)
+abline(lm(train_data.price  ~train_data.bedrooms, data=no_outliers), col="blue", lwd=3, lty=2)
+```
+
+#Notice the change in slope of the best fit line after removing the outliers. It is evident that if we remove the outliers to train the model, our predictions would be exagerated (high error) for larger values of price because of the larger slope.
+
+#MODELING
+```{r}
+model=lm(data=train_data1,price~bedrooms+bathrooms+sqft_living+view+grade+sqft_above+sqft_basement+sqft_lot15)
+fit1 = lm(model, data = train_data1)
+summary(model)
+
+```
+
+```{r}
+#use model to predict probability of default
+predicted <- predict(model, test_data, type="response")
+predicted_class<-round(predicted)
+test_data$class=predicted_class
+pred<-head(predicted_class)
+act<-head(test_data$class)
+conf_matrix1<-table(predicted=pred,actual=act)
+conf_matrix1
+```
+```{r}
+#accuracy1<-sum(diag(conf_matrix1))/sum(conf_matrix1)
+#accuracy1
+actual_preds <- data.frame(cbind(actual = test_data$class, predicted=predicted))
+cor_accuracy <- cor(actual_preds)
+cor_accuracy
+```
+
+####We can see the relationship between these variables appear to be moderately strong as shown by R-Suared value and the probability.also coclude from the p-value that sqft_lot15 is not a significant variable for the prediction of price. Hence we drop it.
+```{r}
+model2=lm(data=train_data1,price~bedrooms+bathrooms+sqft_living+view+grade+sqft_lot+age+floors+waterfront)
+fit2 = lm(model2, data=train_data1)
+summary(model2)
+```
+```{r}
+predicted2 <- predict(model2, test_data, type="response")
+predicted_class2<-round(predicted2)
+test_data$class=predicted_class2
+pred2<-head(predicted_class2)
+act2<-head(test_data$class)
+conf_matrix2<-table(actual=act2,predicted=pred2)
+conf_matrix2
+```
+```{r}
+actual_preds2 <- data.frame(cbind(actual = test_data$class, predicted=predicted2))
+cor_accuracy2 <- cor(actual_preds2)
+cor_accuracy2
+```
+
+
+
+
+#As concluded from the adjusted R-squared value of 0.4855, the relationship beween these variables appear to be quite strong.
+
+
+
+```{r}
+unique(project$condition)
+```
+
+
+```{r}
+#Logistic Regression
+model3<-glm(data=train_data1,price~bedrooms+bathrooms+sqft_living+view+grade+sqft_lot+age+floors+waterfront)
+price<-coef(model3)[1]+coef(model3)[2]*project$bedrooms+coef(model3)[3]*project$bathrooms+coef(model3)[4]*project$sqft_living+coef(model3)[5]*project$view+coef(model3)[6]*project$grade+coef(model3)[7]*project$sqft_lot+coef(model3)[8]*project$age+coef(model3)[9]*project$floors+coef(model3)[10]*project$waterfront
+summary(model3)
+fit3 = glm(model3, data=train_data1)
+range(train_data$condition)
+min(range(train_data$condition))
+max(range(train_data$condition))
+```
+```{r}
+x<- seq(min(range(train_data1$condition)),max(range(train_data1$condition)),0.1)
+x
+y<-predict(model3,newdata = list(condition=x),type="response")
+y
+plot(project$condition,project$price)
+
+```
+```{r}
+#plot(x,y)
+#lines(x,y)
+```
+
+```{r}
+predicted3<-predict(model3,train_data,type="response")
+predicted_class3<-round(predicted3)
+train_data$class=predicted_class3
+pred3<-head(predicted_class3)
+act3<-head(test_data$class)
+conf_matrix3<-table(actual=act3,predicted=pred3)
+conf_matrix3
+```
+
+```{r}
+actual_preds3 <- data.frame(cbind(predicted=predicted3,actual = test_data$class))
+cor_accuracy3 <- cor(actual_preds3)
+cor_accuracy3
+```
+
+```{r}
+errors <- prediction[,"fit"] - test_data$price
+hist(errors)
+```
+
+We can see the relationship between these variables appear to be moderately strong as shown by R-Squared value and the probability.also coclude from the p-value that sqft_lot15 is not a significant variable for the prediction of price. Hence we drop it. ####We also try fitting the model including a few other variables which we left out in the EDA and stop at a model which gives us the maximum R-squared value.
+
+
+#making decision trees
+```{r}
+project_ctree1 <- ctree(condition~price,data=train_data)
+plot(project_ctree1, type="simple")
+
+#using decision trees for training and test set
+#train_index1=sample(1:nrow(train_data),0.7*nrow(project))
+train_index1=sample(c(TRUE, FALSE), nrow(project), replace=TRUE, prob=c(0.7,0.3))
+train_set1=train_data[train_index1,]
+test_set1=train_data[-train_index1,]
+
+#run model on training set
+project_ctree_model1 <- ctree(condition~price,data=train_data)
+project_ctree_model1
+```
+```{r}
+#prediction on test set
+project_ctree_prediction1 <- predict(project_ctree_model1,test_data)
+head(project_ctree_prediction1)
+
+#confusion matrix
+table(project_ctree_prediction1,test_data$condition)
+```
+
+
+```{r}
+indep_train_data=train_data[-5]# making a independent set by removing target variable
+indep_test_data=test_data[-5]
+indep_test_data
+target_train_data=train_data$sqft_living
+target_test_data=test_data$sqft_living
+# applying KNN
+pred_target_test_set1=knn(indep_train_set1,indep_test_set1,target_train_set1,k=3) 
+table(pred_target_test_set1,target_test_set1)
+
+
+```
+
+#clustering
+
+```{r}
+#head(train_data)
+project=project[-1]
+kmean_housing=kmeans(project,3)
+kmean_housing
+```
+```{r}
+table(project$condition,kmean_housing$cluster)
+```
+
+```{r}
+month <- train_data1 %>% group_by(month=floor_date(date, "month")) %>%
+   summarize(price=sum(price))
+month
+```
+
+```{r}
+plot(month, xlab="month", ylab="Sales", main="Monthly house sales Data", col = 2)
+abline(lm(month$month ~ time(month$price)))
+```
+```{r}
+Accuracy_table<- matrix(c(accuracy1,accuracy2,accuracy3),ncol=3,byrow=TRUE)
+colnames(Accuracy_table) <- c("model1","model2","model3")
+rownames(Accuracy_table) <- c("Accuracy")
+Accuracy_table <- as.table(Accuracy_table)
+Accuracy_table
+```
+
+
